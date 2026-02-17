@@ -1,7 +1,7 @@
-from database import db, Session, Base
-import models
+from database import db, Session, Base, get_db
 from pydantic import BaseModel
 import fastapi
+import service
 
 Base.metadata.create_all(bind=db)
 app = fastapi.FastAPI()
@@ -11,48 +11,27 @@ class TextRequest(BaseModel):
     
     
 @app.post("/analyze")
-def analyze_text(request: TextRequest):
+def analyze_text(request: TextRequest, db: Session = fastapi.Depends(get_db)):
     if len(request.text) > 10000: raise fastapi.HTTPException(413, "Payload Too Large")
-    with Session() as session:
-        user_text = request.text
-        count = len(user_text.split())
-        new_entry = models.TextEntry(content=user_text, word_count = count)
-        
-        session.add(new_entry)
-        session.commit()
-        session.refresh(new_entry)
-        
-        return new_entry
+    return service.add_entry(db, request.text)
     
     
 @app.get("/history")
-def get_history(limit: int = 10, offset: int = 0):
-    with Session() as session:
-        entries = session.query(models.TextEntry).limit(limit).offset(offset).all()
-        return entries
+def get_history(limit: int = 10, offset: int = 0, db: Session = fastapi.Depends(get_db)):
+    return service.get_history(db, limit, offset)
     
     
 @app.delete("/id/{entry_id}")
-def delete_entry(entry_id: int):
-    with Session() as session:
-        entry = session.query(models.TextEntry).filter(models.TextEntry.id == entry_id).first()
-        if entry == None: raise fastapi.HTTPException(404, "Entry Not Found")
-        
-        session.delete(entry)
-        session.commit()
-        
-        return {"detail": "Entry deleted"}
-    
+def delete_entry(entry_id: int, db: Session = fastapi.Depends(get_db)):
+    message = service.delete_entry(db, entry_id)
+    if message is None: 
+        raise fastapi.HTTPException(404, "Entry Not Found")
+    return message
+            
 
 @app.put("/id/{entry_id}")
-def update_entry(entry_id: int, request: TextRequest):
-    with Session() as session:
-        entry = session.query(models.TextEntry).filter(models.TextEntry.id == entry_id).first()
-        if entry == None: raise fastapi.HTTPException(404, "Entry Not Found")
-        
-        entry.content = request.text
-        entry.word_count = len(entry.content.split())
-        session.commit()
-        session.refresh(entry)
-        
-        return entry
+def update_entry(entry_id: int, request: TextRequest, db: Session = fastapi.Depends(get_db)):
+    message = service.update_entry(db, entry_id, request.text)
+    if message is None:
+        raise fastapi.HTTPException(404, "Entry Not Found")
+    return message
