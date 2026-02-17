@@ -38,6 +38,7 @@ def test_create_analysis():
     assert response.status_code == 200
     
     data = response.json()
+    assert data["content"] == "I am testing this thing, hope it works"
     assert data["word_count"] == 8
 
 def test_text_too_large():
@@ -51,3 +52,47 @@ def test_text_too_large():
     assert response.status_code == 413
     assert data["detail"] == "Payload Too Large"
     
+def test_update_entry():
+    payload = {
+        "text": "I am testing this thing, hope it works"
+    }
+    response = client.post("/analyze", json=payload)
+    data = response.json()
+    id = data["id"]
+    
+    payload = {
+        "text": "Hope it changes to this now"
+    }
+    response = client.put(f"/id/{id}", json=payload)
+    data = response.json()
+    
+    assert response.status_code == 200
+    assert data["content"] == "Hope it changes to this now"
+    assert data["word_count"] == 6
+    
+def test_delete_entry():
+    payload = {
+        "text": "I am testing this thing, hope it works"
+    }
+    response = client.post("/analyze", json=payload)
+    data = response.json()
+    id = data["id"]
+    
+    response = client.delete(f"/id/{id}")
+    response = client.get("/history")
+    data = response.json()
+    
+    existing_ids = [entry["id"] for entry in data]
+    
+    assert id not in existing_ids
+    
+def test_get_history():
+    texts = ["This is first", "This is second", "And this is third"]
+    for t in texts:
+        client.post("/analyze", json={"text": t})
+    
+    response = client.get("/history?limit=2")
+    data = response.json()
+    
+    assert response.status_code == 200
+    assert len(data) == 2
